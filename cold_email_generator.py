@@ -85,11 +85,10 @@ Important instructions:
 2. Write a highly personalized email based on the company information provided. If certain information is missing, write naturally without it rather than making assumptions.
 3. Keep the email concise, professional, and focused on value proposition.
 4. Use a natural, conversational tone while maintaining professionalism.
-5. Include my contact information and company details from the provided config, not as placeholders.
-6. Focus on how {MY_COMPANY_NAME} can specifically help {business_name} based on their business context.
-7. End with a clear but non-aggressive call to action.
-8. Format the email in markdown.
-9. Use EXACTLY this signature format at the end (no other signatures or contact information in the email):
+5. Focus on how {MY_COMPANY_NAME} can specifically help {business_name} based on their business context.
+6. End with a clear but non-aggressive call to action.
+7. Format the email in markdown.
+8. End the email with EXACTLY this signature format and nothing else after it:
 
 ---
 
@@ -107,14 +106,12 @@ def get_cold_email_to_business(
     founder_name: str = "",
     business_name: str = "",
     company_website: str = "",
-    company_linkedin: str = "",
-    company_email: str = "",
-    company_phone: str = "",
-    company_location: str = ""
-):
+) -> str:
     """
-    Generate a cold email using the OpenAI API
+    Generate a cold email to a business based on their profile
     """
+    client = openai.OpenAI(api_key=OPENAI_API_KEY)
+    
     try:
         # Extract information from HTML
         company_info = extract_company_info(company_profile)
@@ -132,22 +129,16 @@ def get_cold_email_to_business(
             max_tokens=500,
             temperature=0.7
         )
-
-        # Extract the generated email
-        if response.choices and response.choices[0].message:
-            email = response.choices[0].message.content
-            
-            # Add signature
-            email += f"\n\nBest regards,\n{MY_NAME}\n{MY_DESIGNATION}\n{MY_COMPANY_NAME}\nLinkedIn: {MY_LINKEDIN}\nPhone: {MY_PHONE}\nEmail: {MY_EMAIL}"
-            
-            return email
-        else:
-            logger.error("No response generated from OpenAI API")
-            return None
-
+        
+        # Get the generated email content
+        email_content = response.choices[0].message.content.strip()
+        
+        # Return the email content directly without adding any footer
+        return email_content
+        
     except Exception as e:
         logger.error(f"Error generating cold email: {str(e)}")
-        return None
+        return ""
 
 def crawl_and_generate_profile(company_data: Dict) -> Dict:
     """
@@ -193,10 +184,6 @@ def generate_company_profile(company_data: dict) -> Optional[dict]:
         company_profile = company_data.get('company_description', '')
         founder_name = company_data.get('founder_name', 'the founder')
         company_website = company_data.get('website')
-        company_linkedin = company_data.get('linkedin')
-        company_email = company_data.get('email')
-        company_phone = company_data.get('phone')
-        company_location = company_data.get('location')
 
         # Generate cold email with all available information
         cold_email = get_cold_email_to_business(
@@ -204,10 +191,6 @@ def generate_company_profile(company_data: dict) -> Optional[dict]:
             founder_name=founder_name,
             business_name=company_name,
             company_website=company_website,
-            company_linkedin=company_linkedin,
-            company_email=company_email,
-            company_phone=company_phone,
-            company_location=company_location
         )
 
         if cold_email:
