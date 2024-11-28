@@ -25,7 +25,7 @@ class Database:
                 file_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 filename TEXT NOT NULL,
                 file_type TEXT,
-                upload_date TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 row_count INTEGER
             )
         """)
@@ -51,7 +51,8 @@ class Database:
             crawl_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             source_file_id INTEGER,
             status TEXT DEFAULT 'success',
-            error_message TEXT
+            error_message TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         ''')
 
@@ -65,6 +66,7 @@ class Database:
                 source_file_id INTEGER,
                 status TEXT,
                 error_message TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (source_file_id) REFERENCES files (file_id)
             )
         """)
@@ -78,8 +80,8 @@ class Database:
         cursor = conn.cursor()
         
         cursor.execute('''
-        INSERT INTO files (filename, file_type)
-        VALUES (?, ?)
+        INSERT INTO files (filename, file_type, created_at)
+        VALUES (?, ?, CURRENT_TIMESTAMP)
         ''', (filename, file_type))
         
         file_id = cursor.lastrowid
@@ -120,9 +122,9 @@ class Database:
         cursor = conn.cursor()
         
         cursor.execute('''
-        SELECT file_id, filename, file_type, upload_date, row_count 
+        SELECT file_id, filename, file_type, created_at, row_count 
         FROM files 
-        ORDER BY upload_date DESC
+        ORDER BY created_at DESC
         ''')
         
         files = cursor.fetchall()
@@ -331,7 +333,7 @@ class Database:
             conn = self.get_connection()
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT file_id, filename, file_type, upload_date, row_count 
+                SELECT file_id, filename, file_type, created_at, row_count 
                 FROM files 
                 WHERE file_id = ?
             """, (file_id,))
@@ -344,11 +346,65 @@ class Database:
                 'id': row[0],
                 'filename': row[1],
                 'file_type': row[2],
-                'upload_date': row[3],
+                'created_at': row[3],
                 'row_count': row[4]
             }
         except Exception as e:
             logging.error(f"Error getting file by ID: {str(e)}")
             return None
+        finally:
+            conn.close()
+
+    def get_all_files(self):
+        """Get all files with their details"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT file_id, filename, file_type, row_count, created_at
+            FROM files
+            ORDER BY created_at DESC
+        """)
+        return cursor.fetchall()
+
+    def get_company_profiles(self, file_id: int):
+        """Get all company profiles for a file"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT company_name, profile_text
+            FROM company_profiles
+            WHERE source_file_id = ?
+        """, (file_id,))
+        rows = cursor.fetchall()
+        return [{'company_name': row[0], 'profile_text': row[1]} for row in rows]
+
+    def empty_tables(self):
+        """Empty all tables in the database"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            # List of tables to empty
+            tables = [
+                'files',
+                'file_data',
+                'crawled_data',
+                'company_profiles'
+            ]
+            
+            # Empty each table
+            for table in tables:
+                cursor.execute(f"DELETE FROM {table}")
+            
+            # Reset auto-increment counters
+            for table in tables:
+                cursor.execute(f"DELETE FROM sqlite_sequence WHERE name='{table}'")
+            
+            conn.commit()
+            cursor.close()
+            
+        except Exception as e:
+            conn.rollback()
+            raise Exception(f"Error emptying tables: {str(e)}")
         finally:
             conn.close()

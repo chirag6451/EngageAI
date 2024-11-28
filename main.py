@@ -6,6 +6,8 @@ from typing import List, Dict
 from database import Database
 from crawl_with_ai import fetch_from_url
 from cold_email_generator import get_cold_email_to_business
+from email_utility import send_email, format_email_content
+from config import TO_EMAILS
 
 # Configure logging
 logging.basicConfig(
@@ -197,6 +199,161 @@ class MarketingAutomation:
         except Exception as e:
             logger.error(f"Error in generate_cold_emails: {str(e)}")
 
+    def send_cold_emails(self, file_id: int) -> None:
+        """
+        Send generated cold emails
+        """
+        try:
+            logger.info("Starting to send cold emails...")
+            # Get all generated cold emails
+            cold_emails = self.db.get_company_profiles(file_id)
+            
+            if not cold_emails:
+                logger.warning("No cold emails found to send")
+                return
+
+            total_emails = len(cold_emails)
+            logger.info(f"Found {total_emails} cold emails to send")
+
+            for index, email_data in enumerate(cold_emails, 1):
+                try:
+                    company_name = email_data.get('company_name', 'Unknown Company')
+                    email_content = email_data.get('profile_text', '')
+                    
+                    if not email_content:
+                        logger.warning(f"No email content found for {company_name}")
+                        continue
+
+                    # Format the email content as HTML
+                    html_content = format_email_content(email_content)
+                    
+                    # Send the email
+                    subject = f"Business Proposal for {company_name}"
+                    success = send_email(
+                        subject=subject,
+                        body=html_content,
+                        to_email=TO_EMAILS,
+                        is_html=True
+                    )
+                    
+                    if success:
+                        logger.info(f"Successfully sent email {index}/{total_emails} to {company_name}")
+                    else:
+                        logger.error(f"Failed to send email to {company_name}")
+
+                except Exception as e:
+                    logger.error(f"Error sending email for {company_name}: {str(e)}")
+                    continue
+
+            logger.info("Completed sending all cold emails")
+
+        except Exception as e:
+            logger.error(f"Error in send_cold_emails: {str(e)}")
+
+    def empty_all_tables(self):
+        """Empty all tables in the database"""
+        try:
+            logger.info("Emptying all tables...")
+            self.db.empty_tables()
+            logger.info("Successfully emptied all tables")
+        except Exception as e:
+            logger.error(f"Error emptying tables: {str(e)}")
+
+    def test_single_record(self, file_path: str):
+        """Test the entire process with a single record"""
+        try:
+            logger.info("=== Starting Single Record Test ===")
+            
+            # Step 1: Process CSV
+            logger.info("\n=== Step 1: Processing CSV ===")
+            file_id = self.process_csv_file(file_path)
+            if not file_id:
+                logger.error("Failed to process CSV file")
+                return
+            
+            # Get first record
+            file_data = self.db.get_file_data(file_id)
+            if not file_data:
+                logger.error("No data found in CSV")
+                return
+                
+            first_row = json.loads(file_data[0][0])
+            logger.info("\nFirst Record Data:")
+            for key, value in first_row.items():
+                logger.info(f"{key}: {value}")
+            
+            # Step 2: Crawl Website
+            logger.info("\n=== Step 2: Crawling Website ===")
+            company_name = first_row.get('Company Name', '')
+            website_url = first_row.get('Company URL', '')
+            
+            if not website_url:
+                logger.error(f"No website URL found for company: {company_name}")
+                return
+                
+            logger.info(f"Crawling website for {company_name}: {website_url}")
+            html_content = fetch_from_url(website_url)
+            
+            if not html_content:
+                logger.error("Failed to crawl website")
+                return
+                
+            logger.info("Successfully crawled website")
+            logger.info(f"HTML Content Length: {len(html_content)} characters")
+            
+            # Save crawled data
+            crawl_id = self.db.save_crawled_data(
+                company_name=company_name,
+                url=website_url,
+                html_content=html_content,
+                source_file_id=file_id
+            )
+            logger.info(f"Saved crawled data with ID: {crawl_id}")
+            
+            # Step 3: Generate Cold Email
+            logger.info("\n=== Step 3: Generating Cold Email ===")
+            cold_email = get_cold_email_to_business(
+                company_profile=html_content,
+                business_name=company_name,
+                company_website=website_url
+            )
+            
+            if not cold_email:
+                logger.error("Failed to generate cold email")
+                return
+                
+            logger.info("\nGenerated Cold Email:")
+            print("\n" + "="*50)
+            print(cold_email)
+            print("="*50 + "\n")
+            
+            # Save the email
+            self.db.save_company_profile({
+                'company_name': company_name,
+                'profile_text': cold_email,
+                'source_file_id': file_id,
+                'status': 'success'
+            })
+            
+            # Step 4: Test Email Sending (Optional)
+            logger.info("\n=== Step 4: Email Sending Test ===")
+            while True:
+                send_test = input("\nWould you like to send a test email? (yes/no): ").strip().lower()
+                if send_test in ['yes', 'no']:
+                    break
+                print("Please enter 'yes' or 'no'")
+            
+            if send_test == 'yes':
+                self.send_cold_emails(file_id)
+                logger.info("Test email sent")
+            else:
+                logger.info("Email sending test skipped")
+            
+            logger.info("\n=== Test Complete ===")
+            
+        except Exception as e:
+            logger.error(f"Error in test process: {str(e)}")
+
 def main():
     """
     Main function to run the marketing automation process
@@ -205,26 +362,94 @@ def main():
         # Initialize the automation class
         automation = MarketingAutomation()
         
-        # Get file path from user
-        file_path = input("Enter the path to your CSV file: ").strip()
-        logger.info(f"Starting process for file: {file_path}")
-        
-        # Process the CSV file
-        logger.info("Step 1: Processing CSV file...")
-        file_id = automation.process_csv_file(file_path)
-        if not file_id:
-            logger.error("Failed to process CSV file")
-            return
+        while True:
+            print("\nCold Email Marketing Automation")
+            print("1. Process new CSV file and generate emails")
+            print("2. Send existing cold emails")
+            print("3. Empty all tables")
+            print("4. Test with single record")
+            print("5. Exit")
+            
+            choice = input("\nEnter your choice (1-5): ").strip()
+            
+            if choice == "1":
+                # Get file path from user
+                file_path = input("Enter the path to your CSV file: ").strip()
+                logger.info(f"Starting process for file: {file_path}")
+                
+                # Process the CSV file
+                logger.info("Step 1: Processing CSV file...")
+                file_id = automation.process_csv_file(file_path)
+                if not file_id:
+                    logger.error("Failed to process CSV file")
+                    continue
 
-        # Crawl websites and save data
-        logger.info("Step 2: Crawling websites...")
-        results = automation.crawl_company_websites(file_id)
-        logger.info(f"Successfully crawled {len(results)} companies")
+                # Crawl websites and save data
+                logger.info("Step 2: Crawling websites...")
+                results = automation.crawl_company_websites(file_id)
+                logger.info(f"Successfully crawled {len(results)} companies")
 
-        # Generate cold emails
-        logger.info("Step 3: Generating cold emails...")
-        automation.generate_cold_emails(file_id)
-        logger.info("Process completed successfully!")
+                # Generate cold emails
+                logger.info("Step 3: Generating cold emails...")
+                automation.generate_cold_emails(file_id)
+                
+                # Ask user if they want to send emails
+                while True:
+                    send_emails = input("\nDo you want to send the generated emails? (yes/no): ").strip().lower()
+                    if send_emails in ['yes', 'no']:
+                        break
+                    print("Please enter 'yes' or 'no'")
+
+                if send_emails == 'yes':
+                    logger.info("Step 4: Sending cold emails...")
+                    automation.send_cold_emails(file_id)
+                else:
+                    logger.info("Email sending skipped as per user request")
+                
+            elif choice == "2":
+                # List available file IDs with their details
+                print("\nAvailable Cold Email Batches:")
+                file_data = automation.db.get_all_files()
+                
+                if not file_data:
+                    print("No existing cold email batches found.")
+                    continue
+                
+                for file in file_data:
+                    file_id, filename, file_type, row_count, created_at = file
+                    print(f"Batch ID: {file_id}, File: {filename}, Created: {created_at}, Companies: {row_count or 0}")
+                
+                try:
+                    file_id = int(input("\nEnter the Batch ID to send emails from: ").strip())
+                    logger.info("Sending existing cold emails...")
+                    automation.send_cold_emails(file_id)
+                except ValueError:
+                    logger.error("Invalid Batch ID. Please enter a number.")
+                    continue
+                
+            elif choice == "3":
+                while True:
+                    confirm = input("\nAre you sure you want to empty all tables? This cannot be undone. (yes/no): ").strip().lower()
+                    if confirm in ['yes', 'no']:
+                        break
+                    print("Please enter 'yes' or 'no'")
+                
+                if confirm == 'yes':
+                    automation.empty_all_tables()
+                    print("All tables have been emptied.")
+                else:
+                    print("Operation cancelled.")
+                
+            elif choice == "4":
+                file_path = input("Enter the path to your CSV file: ").strip()
+                automation.test_single_record(file_path)
+                
+            elif choice == "5":
+                print("Exiting program...")
+                break
+            
+            else:
+                print("Invalid choice. Please enter 1-5.")
 
     except Exception as e:
         logger.error(f"Error in main process: {str(e)}")

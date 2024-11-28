@@ -1,13 +1,13 @@
 import os
+import json
 import logging
-from typing import Optional, List, Dict
-from pydantic import BaseModel
-from openai import OpenAI
 from bs4 import BeautifulSoup
-import re
+from typing import Dict, Optional, List
+from pydantic import BaseModel
+import openai
 from config import (
     MY_NAME, MY_DESIGNATION, MY_COMPANY_NAME, MY_COMPANY_PROFILE,
-    MY_LINKEDIN, MY_PHONE, MY_EMAIL
+    MY_LINKEDIN, MY_PHONE, MY_EMAIL, OPENAI_API_KEY
 )
 from crawl_with_ai import fetch_from_url
 from ai_profile_generator import AIProfileGenerator
@@ -17,7 +17,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Initialize OpenAI client
-client = OpenAI()
+client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
 # Initialize AI Profile Generator
 profile_generator = AIProfileGenerator()
@@ -25,178 +25,128 @@ profile_generator = AIProfileGenerator()
 class ColdEmailToBusiness(BaseModel):
     cold_email: str
 
-def extract_company_info_from_html(html_content: str) -> Dict[str, str]:
-    """
-    Extract relevant company information from HTML content
-    """
-    try:
-        soup = BeautifulSoup(html_content, 'html.parser')
-        
-        # Initialize dictionary for company info
-        company_info = {
-            'description': '',
-            'products_services': '',
-            'features': '',
-            'target_market': ''
-        }
-        
-        # Get all text content
-        text_content = soup.get_text(separator=' ', strip=True)
-        
-        # Extract main content sections
-        paragraphs = [p.get_text(strip=True) for p in soup.find_all('p') if p.get_text(strip=True)]
-        headings = [h.get_text(strip=True) for h in soup.find_all(['h1', 'h2', 'h3']) if h.get_text(strip=True)]
-        
-        # Combine relevant sections
-        company_info['description'] = ' '.join(paragraphs[:2]) if paragraphs else ''
-        
-        # Look for features or products sections
-        features_section = False
-        products_section = False
-        features = []
-        products = []
-        
-        for heading in headings:
-            heading_lower = heading.lower()
-            if 'feature' in heading_lower:
-                features_section = True
-                products_section = False
-            elif 'product' in heading_lower or 'service' in heading_lower:
-                products_section = True
-                features_section = False
-            
-            if features_section:
-                features.append(heading)
-            elif products_section:
-                products.append(heading)
-        
-        company_info['features'] = ' '.join(features)
-        company_info['products_services'] = ' '.join(products)
-        
-        # Clean up and format the text
-        for key in company_info:
-            if company_info[key]:
-                # Remove multiple spaces and newlines
-                company_info[key] = re.sub(r'\s+', ' ', company_info[key]).strip()
-                # Remove very short entries
-                if len(company_info[key]) < 10:
-                    company_info[key] = ''
-        
-        return company_info
+def extract_company_info(html_content: str) -> Dict[str, str]:
+    """Extract relevant information from HTML content"""
+    soup = BeautifulSoup(html_content, 'html.parser')
+    info = {}
     
-    except Exception as e:
-        logger.error(f"Error extracting company info from HTML: {str(e)}")
-        return {
-            'description': '',
-            'products_services': '',
-            'features': '',
-            'target_market': ''
-        }
+    # Try to extract company description
+    description_tags = soup.find_all(['p', 'div'], class_=['description', 'about', 'about-us', 'company-description'])
+    if description_tags:
+        info['description'] = ' '.join([tag.get_text().strip() for tag in description_tags[:2]])
+    else:
+        # Fallback to first few paragraphs
+        paragraphs = soup.find_all('p')
+        if paragraphs:
+            info['description'] = ' '.join([p.get_text().strip() for p in paragraphs[:2]])
+    
+    # Try to extract products/services
+    product_tags = soup.find_all(['div', 'section'], class_=['products', 'services', 'solutions'])
+    if product_tags:
+        products = []
+        for tag in product_tags[:3]:  # Limit to first 3 product sections
+            product_text = tag.get_text().strip()
+            if product_text:
+                products.append(product_text)
+        if products:
+            info['products_services'] = ' '.join(products)
+    
+    # Try to extract technologies/expertise
+    tech_tags = soup.find_all(['div', 'section'], class_=['technologies', 'expertise', 'tech-stack'])
+    if tech_tags:
+        techs = []
+        for tag in tech_tags[:2]:
+            tech_text = tag.get_text().strip()
+            if tech_text:
+                techs.append(tech_text)
+        if techs:
+            info['technologies'] = ' '.join(techs)
+    
+    return {k: v for k, v in info.items() if v}  # Only return non-empty values
 
-def get_cold_email_to_business(
-    company_profile: str,
-    founder_name: str,
-    business_name: str,
-    company_website: str = None,
-    company_linkedin: str = None,
-    company_email: str = None,
-    company_phone: str = None,
-    company_location: str = None
-):
-    """
-    Generate a cold email for a business based on their profile and contact information.
-    """
-    try:
-        logger.info(f"Generating cold email for business: {business_name}")
-        
-        # Extract company information from HTML
-        company_info = extract_company_info_from_html(company_profile)
-        
-        # Build company details section
-        company_details = []
-        if company_website:
-            company_details.append(f"Website: {company_website}")
-        if company_linkedin:
-            company_details.append(f"LinkedIn: {company_linkedin}")
-        if company_email:
-            company_details.append(f"Email: {company_email}")
-        if company_phone:
-            company_details.append(f"Phone: {company_phone}")
-        if company_location:
-            company_details.append(f"Location: {company_location}")
-        
-        company_details_text = "\n".join(company_details) if company_details else "No additional contact details available"
+def get_cold_email_prompt(company_profile: str, business_name: str, company_website: str) -> str:
+    """Generate the prompt for cold email generation"""
+    return f"""You are a professional cold email writer. Write a personalized cold email to {business_name} ({company_website}).
 
-        prompt = f"""You are an expert in writing cold emails to businesses. Create a highly personalized and compelling cold email based on the following information:
+Here is information about my business:
+- My name: {MY_NAME}
+- My role: {MY_DESIGNATION}
+- My company: {MY_COMPANY_NAME}
+- Company profile: {MY_COMPANY_PROFILE}
+- My LinkedIn: {MY_LINKEDIN}
+- My phone: {MY_PHONE}
+- My email: {MY_EMAIL}
 
-MY INFORMATION:
-- Name: {MY_NAME}
-- Designation: {MY_DESIGNATION}
-- Company: {MY_COMPANY_NAME}
-- LinkedIn: {MY_LINKEDIN}
-- Phone: {MY_PHONE}
-- Email: {MY_EMAIL}
-- Company Profile: {MY_COMPANY_PROFILE}
+Here is the information about the target company:
+{company_profile}
 
-TARGET COMPANY INFORMATION:
-- Company Name: {business_name}
-- Website: {company_website}
-- Description: {company_info['description']}
-- Products/Services: {company_info['products_services']}
-- Key Features: {company_info['features']}
+Important instructions:
+1. DO NOT use ANY placeholder text like "[Your Company]", "[Name]", etc. If you don't have specific information, craft the email without mentioning it rather than using placeholders.
+2. Write a highly personalized email based on the company information provided. If certain information is missing, write naturally without it rather than making assumptions.
+3. Keep the email concise, professional, and focused on value proposition.
+4. Use a natural, conversational tone while maintaining professionalism.
+5. Include my contact information and company details from the provided config, not as placeholders.
+6. Focus on how {MY_COMPANY_NAME} can specifically help {business_name} based on their business context.
+7. End with a clear but non-aggressive call to action.
+8. Format the email in markdown.
+9. Use EXACTLY this signature format at the end (no other signatures or contact information in the email):
 
-INSTRUCTIONS:
-Create a highly personalized and creative cold email that:
+---
 
-1. FORMAT:
-   - First line: Write an attention-grabbing subject line that mentions their company specifically
-   - Second line: Blank
-   - Main body: 3-4 concise, impactful paragraphs
-   - Signature: Professional signature with all contact details
-
-2. CONTENT REQUIREMENTS:
-   - Start with a personalized greeting
-   - Reference specific details about their products/services from the extracted information
-   - Show understanding of their business value proposition
-   - Very briefly explain our relevant expertise (1-2 sentences max)
-   - Include a clear, specific call to action (e.g., "Would you be open to a 15-minute call this week?")
-   - Keep the entire email under 200 words
-
-3. TONE AND STYLE:
-   - Professional yet conversational
-   - Show genuine interest and enthusiasm
-   - Focus on their business first, our offering second
-   - Be specific and relevant to their industry
-   - Avoid generic phrases and sales jargon
-
-4. SIGNATURE FORMAT:
 Best regards,
 {MY_NAME}
 {MY_DESIGNATION}
 {MY_COMPANY_NAME}
-LinkedIn: {MY_LINKEDIN}
-Phone: {MY_PHONE}
-Email: {MY_EMAIL}"""
 
-        completion = client.beta.chat.completions.parse(
-            model=os.environ.get("OPENAI_MODEL", "gpt-3.5-turbo"),
+[LinkedIn]({MY_LINKEDIN}) | [Phone: {MY_PHONE}](tel:{MY_PHONE.replace(' ', '')}) | [Email: {MY_EMAIL}](mailto:{MY_EMAIL})
+
+Write only the email content with the exact signature format above, no additional explanations or notes."""
+
+def get_cold_email_to_business(
+    company_profile: str,
+    founder_name: str = "",
+    business_name: str = "",
+    company_website: str = "",
+    company_linkedin: str = "",
+    company_email: str = "",
+    company_phone: str = "",
+    company_location: str = ""
+):
+    """
+    Generate a cold email using the OpenAI API
+    """
+    try:
+        # Extract information from HTML
+        company_info = extract_company_info(company_profile)
+        
+        # Build the prompt with available information
+        prompt = get_cold_email_prompt(company_profile, business_name, company_website)
+        
+        # Make the API call
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
             messages=[
-                {
-                    "role": "system", 
-                    "content": prompt
-                },
+                {"role": "system", "content": "You are a professional business development expert crafting personalized cold emails. Only use information explicitly provided, never make assumptions or add placeholder text."},
+                {"role": "user", "content": prompt}
             ],
-            response_format=ColdEmailToBusiness,
+            max_tokens=500,
+            temperature=0.7
         )
-        message = completion.choices[0].message
-        if message.content:
-            logger.info("Successfully generated cold email")
-            return message.content
+
+        # Extract the generated email
+        if response.choices and response.choices[0].message:
+            email = response.choices[0].message.content
+            
+            # Add signature
+            email += f"\n\nBest regards,\n{MY_NAME}\n{MY_DESIGNATION}\n{MY_COMPANY_NAME}\nLinkedIn: {MY_LINKEDIN}\nPhone: {MY_PHONE}\nEmail: {MY_EMAIL}"
+            
+            return email
         else:
-            logger.error("Failed to generate cold email")
+            logger.error("No response generated from OpenAI API")
             return None
+
     except Exception as e:
-        logger.error(f"An error occurred while generating cold email: {str(e)}")
+        logger.error(f"Error generating cold email: {str(e)}")
         return None
 
 def crawl_and_generate_profile(company_data: Dict) -> Dict:
