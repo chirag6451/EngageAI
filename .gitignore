@@ -2,8 +2,8 @@
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
 .Python
+env/
 build/
 develop-eggs/
 dist/
@@ -15,15 +15,12 @@ lib64/
 parts/
 sdist/
 var/
-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
 
 # Virtual Environment
 venv/
-ENV/
-env/
 .env
 
 # IDE
@@ -31,8 +28,18 @@ env/
 .vscode/
 *.swp
 *.swo
-.DS_Store
 
-# Project specific
-*.csv
+# Generated files
+*.db
+generated_emails.*
+all_generated_emails.*
+~$*
+scraped_data/
+data/
+generated_docs/
+
+# Logs
 *.log
+
+# OS specific
+.DS_Store

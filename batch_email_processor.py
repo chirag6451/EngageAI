@@ -1,11 +1,11 @@
 import os
+import time
 import logging
 from datetime import datetime
 from typing import List, Dict
 from database import Database
 from word_generator import WordGenerator
 from email_utility import send_email_with_attachment
-from cold_email_generator import get_cold_email_to_business
 
 logger = logging.getLogger(__name__)
 
@@ -14,22 +14,28 @@ class BatchEmailProcessor:
         self.db = Database()
         self.word_generator = WordGenerator()
 
-    def process_batch(self, file_id: int) -> str:
+    def process_batch(self, file_id: int, delay_seconds: int = 5) -> Dict:
         """
         Process all emails for a given file ID and generate a Word document
-        Returns the path to the generated document
+        Returns a dictionary with the results
         """
+        results = {
+            'total': 0,
+            'sent': 0,
+            'failed': 0,
+            'details': []
+        }
+
         try:
             # Get all company profiles for the file
             profiles = self.db.get_company_profiles(file_id)
             if not profiles:
                 logger.error(f"No profiles found for file ID: {file_id}")
-                return None
+                return results
 
             # Get file details for naming
             file_details = self.db.get_file_details(file_id)
             if not file_details:
-                # Use a default name if file details not found
                 logger.warning(f"No file details found for ID: {file_id}, using default name")
                 filename = f"batch_{file_id}"
             else:
@@ -46,62 +52,56 @@ class BatchEmailProcessor:
                 f"{filename}_emails_{timestamp}.docx"
             )
 
-            # Process each profile and add to Word document
+            # Generate Word document with all emails
+            self.word_generator.generate_document(profiles, output_path)
+            
+            results['total'] = len(profiles)
+            
+            # Process each profile and send emails
             for profile in profiles:
-                company_name = profile['company_name']
-                email_content = profile['profile_text']
+                company_name = profile.get('company_name', 'Unknown Company')
+                company_email = profile.get('email')
                 
-                if email_content:
-                    self.word_generator.add_email(company_name, email_content)
-                    logger.info(f"Added email for company: {company_name}")
+                if not company_email:
+                    logger.warning(f"No email found for {company_name}")
+                    results['failed'] += 1
+                    results['details'].append({
+                        'company': company_name,
+                        'status': 'failed',
+                        'reason': 'No email address found'
+                    })
+                    continue
+                
+                # Send email with attachment
+                success = send_email_with_attachment(
+                    to_email=company_email,
+                    subject=f"Partnership Opportunity with {company_name}",
+                    content=profile.get('email_content', ''),
+                    attachment_path=output_path
+                )
+                
+                if success:
+                    results['sent'] += 1
+                    results['details'].append({
+                        'company': company_name,
+                        'email': company_email,
+                        'status': 'sent'
+                    })
                 else:
-                    logger.warning(f"No email content for company: {company_name}")
-
-            # Save the document
-            saved_path = self.word_generator.save(output_path)
-            if not saved_path:
-                logger.error("Failed to save Word document")
-                return None
-
-            logger.info(f"Successfully generated Word document: {saved_path}")
-            return saved_path
+                    results['failed'] += 1
+                    results['details'].append({
+                        'company': company_name,
+                        'email': company_email,
+                        'status': 'failed',
+                        'reason': 'Failed to send email'
+                    })
+                
+                # Add delay between emails
+                if delay_seconds > 0:
+                    time.sleep(delay_seconds)
+            
+            return results
 
         except Exception as e:
             logger.error(f"Error processing batch: {str(e)}")
-            return None
-
-    def send_batch_document(self, document_path: str, recipient_email: str) -> bool:
-        """
-        Send the generated Word document as an email attachment
-        """
-        try:
-            # Prepare email content
-            subject = "Generated Cold Emails Batch"
-            body = """
-            Please find attached the generated cold emails document.
-            
-            This document contains all the generated cold emails in a formatted Word document.
-            Each email includes the company name and the personalized email content.
-            
-            Best regards,
-            Marketing Automation System
-            """
-
-            # Send email with attachment
-            success = send_email_with_attachment(
-                recipient_email=recipient_email,
-                subject=subject,
-                body=body,
-                attachment_path=document_path
-            )
-
-            if success:
-                logger.info(f"Successfully sent batch document to {recipient_email}")
-                return True
-            else:
-                logger.error(f"Failed to send batch document to {recipient_email}")
-                return False
-
-        except Exception as e:
-            logger.error(f"Error sending batch document: {str(e)}")
-            return False
+            return results

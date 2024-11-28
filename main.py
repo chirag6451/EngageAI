@@ -12,6 +12,7 @@ from batch_email_processor import BatchEmailProcessor
 from word_generator import WordGenerator
 from html_generator import HTMLGenerator
 from markdown_generator import MarkdownGenerator
+from datetime import datetime
 
 # Configure logging
 logging.basicConfig(
@@ -255,50 +256,87 @@ class MarketingAutomation:
         """
         try:
             logger.info("Starting to send cold emails...")
-            # Get all generated cold emails
-            cold_emails = self.db.get_company_profiles(file_id)
             
-            if not cold_emails:
-                logger.warning("No cold emails found to send")
+            # Get file details for metadata
+            file_details = self.db.get_file_details(file_id)
+            if not file_details:
+                logger.error("Could not retrieve file details")
                 return
-
-            total_emails = len(cold_emails)
-            logger.info(f"Found {total_emails} cold emails to send")
-
-            for index, email_data in enumerate(cold_emails, 1):
-                try:
-                    company_name = email_data.get('company_name', 'Unknown Company')
-                    email_content = email_data.get('profile_text', '')
-                    
-                    if not email_content:
-                        logger.warning(f"No email content found for {company_name}")
-                        continue
-
-                    # Format the email content as HTML
-                    html_content = format_email_content(email_content)
-                    
-                    # Send the email
-                    subject = f"Business Proposal for {company_name}"
-                    success = send_email(
-                        subject=subject,
-                        body=html_content,
-                        to_email=TO_EMAILS,
-                        is_html=True
-                    )
-                    
-                    if success:
-                        logger.info(f"Successfully sent email {index}/{total_emails} to {company_name}")
-                    else:
-                        logger.error(f"Failed to send email to {company_name}")
-
-                except Exception as e:
-                    logger.error(f"Error sending email for {company_name}: {str(e)}")
+                
+            # Get all company profiles
+            company_profiles = self.db.get_company_profiles(file_id)
+            if not company_profiles:
+                logger.warning(f"No company profiles found for file_id: {file_id}")
+                return
+            
+            # Generate markdown document
+            markdown_gen = MarkdownGenerator()
+            markdown_path = markdown_gen.generate_markdown(
+                company_profiles=company_profiles,
+                file_metadata=file_details
+            )
+            
+            if not markdown_path:
+                logger.error("Failed to generate markdown document")
+                return
+                
+            logger.info(f"Generated markdown document: {markdown_path}")
+            
+            # Prepare email batch
+            email_batch = []
+            for profile in company_profiles:
+                company_name = profile.get('company_name', '')
+                email_content = profile.get('profile_text', '')
+                
+                if not email_content:
+                    logger.warning(f"No email content found for {company_name}")
                     continue
-
-            logger.info("Completed sending all cold emails")
-
+                
+                # Get company email from file data
+                company_data = self.db.get_company_details_by_file(file_id)
+                if not company_data:
+                    logger.warning(f"No company data found for {company_name}")
+                    continue
+                
+                to_email = company_data.get('Company Email', '')
+                if not to_email:
+                    logger.warning(f"No email address found for {company_name}")
+                    continue
+                
+                email_batch.append({
+                    'to_email': to_email,
+                    'subject': f"Partnership Opportunity with {MY_COMPANY_NAME}",
+                    'content': email_content
+                })
+            
+            if not email_batch:
+                logger.warning("No valid emails to send")
+                return
+            
+            # Process email batch with markdown attachment
+            processor = BatchEmailProcessor()
+            results = processor.process_batch(
+                emails=email_batch,
+                attachment_path=markdown_path,
+                delay_seconds=5  # Add delay between emails
+            )
+            
+            # Log results
+            logger.info(f"Email sending complete:")
+            logger.info(f"Total: {results['total']}")
+            logger.info(f"Sent: {results['sent']}")
+            logger.info(f"Failed: {results['failed']}")
+            
+            # Save results to database
+            for detail in results['details']:
+                self.db.update_email_status(
+                    company_email=detail['email'],
+                    status=detail['status'],
+                    error_message=detail.get('reason', '')
+                )
+            
         except Exception as e:
-            logger.error(f"Error in send_cold_emails: {str(e)}")
+            logger.error(f"Error sending cold emails: {str(e)}")
 
     def empty_all_tables(self):
         """Empty all tables in the database"""
@@ -414,11 +452,21 @@ class MarketingAutomation:
                 print("No emails found in the database.")
                 return
             
+            # Create metadata for the document
+            metadata = {
+                'filename': 'All Company Profiles',
+                'row_count': len(profiles),
+                'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            }
+            
             # Generate Markdown
             md_gen = MarkdownGenerator()
-            output_path = 'generated_emails.md'
+            output_path = md_gen.generate_markdown(
+                company_profiles=profiles,
+                file_metadata=metadata
+            )
             
-            if md_gen.generate_markdown(profiles, output_path):
+            if output_path:
                 print(f"\nSuccessfully generated Markdown document at: {output_path}")
                 print(f"Total emails included: {len(profiles)}")
                 print("\nYou can open this file in any Markdown viewer or editor to view the formatted emails.")

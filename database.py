@@ -339,19 +339,33 @@ class Database:
             cursor = conn.cursor()
             
             cursor.execute("""
-                SELECT company_name, profile_text
+                SELECT profile_id, company_name, profile_text, created_at, status
                 FROM company_profiles
                 WHERE status = 'success'
+                ORDER BY created_at DESC
             """)
             
-            profiles = cursor.fetchall()
-            conn.close()
+            rows = cursor.fetchall()
+            profiles = []
             
+            for row in rows:
+                profile = {
+                    'profile_id': row[0],
+                    'company_name': row[1],
+                    'profile_text': row[2],
+                    'created_at': row[3],
+                    'status': row[4]
+                }
+                profiles.append(profile)
+            
+            logging.info(f"Retrieved {len(profiles)} company profiles")
             return profiles
             
         except Exception as e:
             logging.error(f"Error getting all company profiles: {str(e)}")
             return []
+        finally:
+            conn.close()
 
     def get_file_by_id(self, file_id: int) -> dict:
         """Get file data by ID"""
