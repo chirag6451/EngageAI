@@ -89,10 +89,10 @@ class MarketingAutomation:
             total_companies = len(file_data)
             logger.info(f"Found {total_companies} companies to process")
 
-            for index, row in enumerate(file_data, 1):
+            for index, (row_data, column_names) in enumerate(file_data, 1):
                 try:
                     # Parse row data
-                    row_dict = json.loads(row[0])
+                    row_dict = json.loads(row_data)
                     company_name = row_dict.get('Company Name', '')
                     website_url = row_dict.get('Company URL', '')
 
@@ -121,16 +121,27 @@ class MarketingAutomation:
                         company_name=company_name,
                         url=website_url,
                         html_content=html_content,
-                        source_file_id=file_id
+                        source_file_id=file_id,
+                        status='success',
+                        error_message=None
                     )
-                    logger.info(f"Saved crawled data with ID: {crawl_id}")
-                    results.append({'company_name': company_name, 'status': 'success'})
+
+                    if crawl_id:
+                        logger.info(f"Saved crawled data with ID: {crawl_id}")
+                        results.append({
+                            'company_name': company_name,
+                            'status': 'success',
+                            'crawl_id': crawl_id
+                        })
+                    else:
+                        logger.error(f"Failed to save crawled data for {company_name}")
 
                 except Exception as e:
                     logger.error(f"Error processing company {company_name}: {str(e)}")
                     continue
 
-            logger.info(f"Completed crawling. Successfully processed {len(results)} out of {total_companies} companies")
+            success_count = len([r for r in results if r['status'] == 'success'])
+            logger.info(f"Completed crawling. Successfully processed {success_count} out of {total_companies} companies")
             return results
 
         except Exception as e:
@@ -143,7 +154,26 @@ class MarketingAutomation:
         """
         try:
             logger.info(f"Starting cold email generation for file_id: {file_id}")
-            # Get crawled data directly from crawled_data table
+            
+            # Get file data first
+            file_data_rows = self.db.get_file_data(file_id)
+            if not file_data_rows:
+                logger.error("No file data found")
+                return
+                
+            # Create a mapping of company names to their file data
+            company_data_map = {}
+            for row_data, column_names in file_data_rows:
+                try:
+                    row_dict = json.loads(row_data)
+                    company_name = row_dict.get('Company Name', '')
+                    if company_name:
+                        company_data_map[company_name] = row_dict
+                except json.JSONDecodeError as e:
+                    logger.error(f"Error parsing row data: {str(e)}")
+                    continue
+
+            # Get crawled data
             crawled_data = self.db.get_crawled_data(source_file_id=file_id)
             if not crawled_data:
                 logger.error("No crawled data found")
@@ -165,12 +195,28 @@ class MarketingAutomation:
                     
                     logger.info(f"Generating cold email for: {company_name}")
                     
-                    # Use the crawled HTML content to generate the email
+                    # Get the original file data for this company
+                    company_data = company_data_map.get(company_name, {})
+                    if not company_data:
+                        logger.warning(f"No file data found for company: {company_name}")
+                    
+                    # Create complete company data dictionary
+                    complete_company_data = {
+                        'company_name': company_name,
+                        'website': url,
+                        'html_content': html_content,
+                        'file_data': company_data,  # Include the original file data
+                        'source_file_id': file_id
+                    }
+                    
+                    logger.info(f"Complete company data: {json.dumps(complete_company_data, indent=2)}")
+                    
+                    # Use the complete data to generate the email
                     cold_email = get_cold_email_to_business(
                         company_profile=html_content,
-                        founder_name="",  # You might want to extract this from HTML if possible
                         business_name=company_name,
-                        company_website=url
+                        company_website=url,
+                        company_data=complete_company_data  # Pass the complete data
                     )
 
                     if cold_email:

@@ -38,16 +38,21 @@ class Database:
         )
         ''')
 
-        # Create crawled_data table for storing Crunchbase data
+        # Drop existing crawled_data table if it exists
+        cursor.execute('DROP TABLE IF EXISTS crawled_data')
+        
+        # Create crawled_data table with correct schema
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS crawled_data (
             crawl_id INTEGER PRIMARY KEY AUTOINCREMENT,
             company_name TEXT,
-            crunchbase_url TEXT UNIQUE NOT NULL,
+            crunchbase_url TEXT,
             html_content TEXT,
             crawl_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            status TEXT,
-            error TEXT
+            status TEXT DEFAULT 'success',
+            error TEXT,
+            source_file_id INTEGER,
+            FOREIGN KEY (source_file_id) REFERENCES files (file_id)
         )
         ''')
 
@@ -173,15 +178,16 @@ class Database:
         
         try:
             cursor.execute('''
-                INSERT OR REPLACE INTO crawled_data 
+                INSERT INTO crawled_data 
                 (company_name, crunchbase_url, html_content, source_file_id, status, error)
                 VALUES (?, ?, ?, ?, ?, ?)
             ''', (company_name, url, html_content, source_file_id, status, error_message))
             
+            crawl_id = cursor.lastrowid
             conn.commit()
-            return cursor.lastrowid
+            return crawl_id
         except sqlite3.Error as e:
-            print(f"Database error: {e}")
+            logging.error(f"Database error in save_crawled_data: {e}")
             return None
         finally:
             conn.close()
@@ -210,9 +216,12 @@ class Database:
                     FROM crawled_data
                 ''')
             
-            return cursor.fetchall()
+            data = cursor.fetchall()
+            logging.info(f"Retrieved {len(data)} records from crawled_data")
+            return data
+            
         except sqlite3.Error as e:
-            print(f"Database error: {e}")
+            logging.error(f"Database error in get_crawled_data: {e}")
             return None
         finally:
             conn.close()

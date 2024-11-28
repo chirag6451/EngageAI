@@ -11,6 +11,7 @@ from config import (
 )
 from crawl_with_ai import fetch_from_url
 from ai_profile_generator import AIProfileGenerator
+from get_weather import get_weather_forecast
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -21,6 +22,13 @@ client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
 # Initialize AI Profile Generator
 profile_generator = AIProfileGenerator()
+
+# Constants
+SYSTEM_PROMPT = """You are a professional cold email writer who creates highly personalized and engaging emails. 
+When weather information is provided, use it to create a personalized opening that references the weather at the RECIPIENT'S location, not yours.
+For example, if given weather data for Dubai showing sunny conditions, you might say "I hope you're staying cool in Dubai's sunny weather" rather than talking about your own weather.
+Focus on making the weather reference feel natural and relevant to the business context where possible.
+Always maintain a professional tone while being personable."""
 
 class ColdEmailToBusiness(BaseModel):
     cold_email: str
@@ -64,81 +72,293 @@ def extract_company_info(html_content: str) -> Dict[str, str]:
     
     return {k: v for k, v in info.items() if v}  # Only return non-empty values
 
-def get_cold_email_prompt(company_profile: str, business_name: str, company_website: str) -> str:
-    """Generate the prompt for cold email generation"""
-    return f"""You are a professional cold email writer. Write a personalized cold email to {business_name} ({company_website}).
+def truncate_text(text: str, max_length: int = 300) -> str:
+    """Truncate text to max_length while preserving complete sentences"""
+    if not text or len(text) <= max_length:
+        return text
+    
+    # Find the last complete sentence within the limit
+    truncated = text[:max_length]
+    last_period = truncated.rfind('.')
+    last_exclamation = truncated.rfind('!')
+    last_question = truncated.rfind('?')
+    
+    # Find the last sentence ending punctuation
+    last_sentence_end = max(last_period, last_exclamation, last_question)
+    
+    if last_sentence_end > 0:
+        return text[:last_sentence_end + 1].strip()
+    
+    # If no sentence ending found, truncate at the last space
+    last_space = truncated.rfind(' ')
+    if last_space > 0:
+        return text[:last_space].strip() + '...'
+    
+    return truncated.strip() + '...'
 
-Here is information about my business:
-- My name: {MY_NAME}
-- My role: {MY_DESIGNATION}
-- My company: {MY_COMPANY_NAME}
-- Company profile: {MY_COMPANY_PROFILE}
-- My LinkedIn: {MY_LINKEDIN}
-- My phone: {MY_PHONE}
-- My email: {MY_EMAIL}
+def get_cold_email_prompt(company_profile: str, business_name: str, company_website: str, location: str = None) -> str:
+    """Generate a prompt for the cold email."""
+    weather_context = ""
+    
+    if location:
+        try:
+            logger.info(f"Getting weather data for location: {location}")
+            weather_data = get_weather_forecast(location)
+            if weather_data:
+                # Format weather context to be more natural
+                weather_context = f"""
+Weather Information:
+Location: {location}
+Current Weather: {weather_data}
 
-Here is the information about the target company:
+Use this weather information to create a natural, personalized opening that references the weather at their location.
+"""
+                logger.info(f"Weather context added to prompt: {weather_context}")
+        except Exception as e:
+            logger.error(f"Error getting weather data: {str(e)}")
+    
+    prompt = f"""{SYSTEM_PROMPT}
+
+Task: Write a personalized cold email to {business_name} ({company_website}).
+
+{weather_context}
+Company Information:
 {company_profile}
 
-Important instructions:
-1. DO NOT use ANY placeholder text like "[Your Company]", "[Name]", etc. If you don't have specific information, craft the email without mentioning it rather than using placeholders.
-2. Write a highly personalized email based on the company information provided. If certain information is missing, write naturally without it rather than making assumptions.
-3. Keep the email concise, professional, and focused on value proposition.
-4. Use a natural, conversational tone while maintaining professionalism.
-5. Focus on how {MY_COMPANY_NAME} can specifically help {business_name} based on their business context.
-6. End with a clear but non-aggressive call to action.
-7. Format the email in markdown.
-8. End the email with EXACTLY this signature format and nothing else after it:
+My Information:
+- Name: {MY_NAME}
+- Role: {MY_DESIGNATION}
+- Company: {MY_COMPANY_NAME}
+- Experience: {MY_COMPANY_PROFILE}
+- Team Size: 
+- Expertise: 
+- Contact: {MY_LINKEDIN} | {MY_PHONE} | {MY_EMAIL}
 
----
+Guidelines:
+1. Start with a personalized opening that mentions their location's weather if available
+2. Focus on their business needs and how we can help
+3. Keep the tone professional yet friendly
+4. Include my contact information in a signature block
+5. Format the email with proper spacing and structure
+"""
 
-Best regards,
-{MY_NAME}
-{MY_DESIGNATION}
-{MY_COMPANY_NAME}
-
-[LinkedIn]({MY_LINKEDIN}) | [Phone: {MY_PHONE}](tel:{MY_PHONE.replace(' ', '')}) | [Email: {MY_EMAIL}](mailto:{MY_EMAIL})
-
-Write only the email content with the exact signature format above, no additional explanations or notes."""
+    logger.info(f"\n=== Final Prompt Weather Context ===\n{weather_context}")
+    return prompt
 
 def get_cold_email_to_business(
     company_profile: str,
-    founder_name: str = "",
-    business_name: str = "",
-    company_website: str = "",
+    business_name: str,
+    company_website: str,
+    company_data: dict = None,
 ) -> str:
-    """
-    Generate a cold email to a business based on their profile
-    """
-    client = openai.OpenAI(api_key=OPENAI_API_KEY)
-    
+    """Generate a cold email for a business."""
     try:
-        # Extract information from HTML
-        company_info = extract_company_info(company_profile)
+        logger.info("\n=== Generating Cold Email ===")
         
-        # Build the prompt with available information
-        prompt = get_cold_email_prompt(company_profile, business_name, company_website)
+        # Extract location from company_data
+        location = None
+        if company_data and 'file_data' in company_data:
+            file_data = company_data['file_data']
+            location = file_data.get('Location')
+            logger.info(f"Location from file_data: {location}")
+
+        logger.info(f"Location passed to get_cold_email_to_business: {location}")
         
-        # Make the API call
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are a professional business development expert crafting personalized cold emails. Only use information explicitly provided, never make assumptions or add placeholder text."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=500,
-            temperature=0.7
+        logger.info("\n=== Cold Email Generation Data ===")
+        logger.info(f"Business Name: {business_name}")
+        logger.info(f"Website: {company_website}")
+        logger.info(f"Location: {location}")
+        
+        # Truncate company profile if needed
+        original_length = len(company_profile)
+        company_profile = truncate_text(company_profile)
+        truncated_length = len(company_profile)
+        
+        logger.info(f"Original Profile Length: {original_length}")
+        logger.info(f"Truncated Profile Length: {truncated_length}")
+        
+        # Get weather data if location is available
+        weather_context = ""
+        if location:
+            logger.info(f"Getting weather data for location: {location}")
+            weather_data = get_weather_forecast(location)
+            if weather_data:
+                logger.info(f"Weather data received: {weather_data}")
+                weather_context = f"\nWeather Context: {weather_data}\n"
+            else:
+                logger.warning(f"No weather data received for location: {location}")
+        
+        logger.info("\n=== Final Prompt Weather Context ===")
+        logger.info(weather_context if weather_context else "No weather context available")
+        
+        # Generate the prompt with weather context if available
+        prompt = get_cold_email_prompt(
+            company_profile=company_profile,
+            business_name=business_name,
+            company_website=company_website,
+            location=location
         )
         
-        # Get the generated email content
+        logger.info(f"Prompt generated with weather context? {bool(weather_context)}")
+        
+        # Generate the email using OpenAI
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            max_tokens=1000
+        )
+        
         email_content = response.choices[0].message.content.strip()
+        logger.info(f"Generated email includes weather reference? {'weather' in email_content.lower()}")
         
-        # Return the email content directly without adding any footer
         return email_content
-        
+
     except Exception as e:
         logger.error(f"Error generating cold email: {str(e)}")
-        return ""
+        return None
+
+def generate_company_profile(company_data: dict) -> Optional[Dict]:
+    """Generate a company profile and cold email based on the provided data."""
+    try:
+        logger.info(f"\n=== Starting Company Profile Generation ===")
+        logger.info(f"Raw Company Data: {company_data}")
+        
+        # Initialize location
+        location = None
+        
+        # First try to get location from file_data
+        if 'file_data' in company_data:
+            logger.info("Found file_data in company_data")
+            try:
+                file_data = company_data['file_data']
+                logger.info(f"File data type: {type(file_data)}")
+                logger.info(f"File data content: {file_data}")
+                
+                if isinstance(file_data, str):
+                    try:
+                        file_data = json.loads(file_data)
+                        logger.info("Successfully parsed file_data JSON")
+                    except json.JSONDecodeError:
+                        logger.info("file_data is a string but not JSON")
+                
+                if isinstance(file_data, dict):
+                    location = file_data.get('Location')
+                    logger.info(f"Location from file_data: {location}")
+                    
+                    if not location and 'row_data' in file_data:
+                        row_data = file_data['row_data']
+                        logger.info(f"Found row_data in file_data: {row_data}")
+                        
+                        if isinstance(row_data, str):
+                            try:
+                                row_data = json.loads(row_data)
+                                logger.info("Successfully parsed row_data JSON")
+                            except json.JSONDecodeError:
+                                logger.info("row_data is a string but not JSON")
+                        
+                        if isinstance(row_data, dict):
+                            location = row_data.get('Location')
+                            logger.info(f"Location from row_data in file_data: {location}")
+            except Exception as e:
+                logger.error(f"Error processing file_data: {str(e)}")
+                logger.debug(f"Problematic file_data: {company_data.get('file_data')}")
+        
+        # If still no location, try direct row_data
+        if not location and 'row_data' in company_data:
+            logger.info("Checking direct row_data")
+            try:
+                row_data = company_data['row_data']
+                logger.info(f"Direct row_data type: {type(row_data)}")
+                logger.info(f"Direct row_data content: {row_data}")
+                
+                if isinstance(row_data, str):
+                    try:
+                        row_data = json.loads(row_data)
+                        logger.info("Successfully parsed direct row_data JSON")
+                    except json.JSONDecodeError:
+                        logger.info("direct row_data is a string but not JSON")
+                
+                if isinstance(row_data, dict):
+                    location = row_data.get('Location')
+                    logger.info(f"Location from direct row_data: {location}")
+            except Exception as e:
+                logger.error(f"Error processing direct row_data: {str(e)}")
+        
+        # If still no location, try alternative fields
+        if not location:
+            logger.info("Checking alternative location fields...")
+            location_fields = ['location', 'city', 'address', 'headquarters', 'hq']
+            data_sources = [company_data]
+            
+            if 'file_data' in company_data:
+                if isinstance(company_data['file_data'], dict):
+                    data_sources.append(company_data['file_data'])
+                elif isinstance(company_data['file_data'], str):
+                    try:
+                        data_sources.append(json.loads(company_data['file_data']))
+                    except json.JSONDecodeError:
+                        pass
+            
+            for source in data_sources:
+                for field in location_fields:
+                    if field in source and source[field]:
+                        location = source[field]
+                        logger.info(f"Found location in '{field}' field: {location}")
+                        break
+                if location:
+                    break
+
+        if not location:
+            logger.warning("No location found in any fields")
+        else:
+            logger.info(f"Final location value: {location}")
+        
+        # Get company profile
+        logger.info(f"Processing company: {company_data.get('company_name')}")
+        company_profile = crawl_and_generate_profile(company_data)
+        if not company_profile:
+            logger.error("Failed to generate company profile")
+            return None
+
+        # Get weather data if location is available
+        weather_context = ""
+        if location:
+            logger.info(f"Getting weather data for location: {location}")
+            weather_data = get_weather_forecast(location)
+            if weather_data:
+                logger.info(f"Weather data received: {weather_data}")
+                weather_context = f"\nWeather Context: {weather_data}\n"
+            else:
+                logger.warning(f"No weather data received for location: {location}")
+
+        # Generate cold email
+        logger.info(f"Generating cold email with location: {location}")
+        cold_email = get_cold_email_to_business(
+            company_profile=company_profile.get('company_description', ''),
+            business_name=company_data.get('company_name', ''),
+            company_website=company_data.get('website', ''),
+            company_data=company_data
+        )
+
+        if not cold_email:
+            logger.error("Failed to generate cold email")
+            return None
+
+        return {
+            'company_name': company_data.get('company_name', ''),
+            'profile_text': cold_email,
+            'source_file_id': company_data.get('file_id'),
+            'status': 'success'
+        }
+
+    except Exception as e:
+        logger.error(f"Error in generate_company_profile: {str(e)}")
+        logger.exception("Full traceback:")
+        return None
 
 def crawl_and_generate_profile(company_data: Dict) -> Dict:
     """
@@ -164,7 +384,7 @@ def crawl_and_generate_profile(company_data: Dict) -> Dict:
         
         # Update company data with generated profile
         if profile_result['status'] == 'success':
-            company_data['company_description'] = profile_result['profile']
+            company_data['company_description'] = truncate_text(profile_result['profile'], 300)
         else:
             logger.error(f"Failed to generate profile: {profile_result.get('error', 'Unknown error')}")
         
@@ -172,46 +392,6 @@ def crawl_and_generate_profile(company_data: Dict) -> Dict:
     except Exception as e:
         logger.error(f"Error in crawl_and_generate_profile: {str(e)}")
         return company_data
-
-def generate_company_profile(company_data: dict) -> Optional[dict]:
-    """Generate a company profile and cold email based on the provided data."""
-    try:
-        # First crawl and generate profile if website is available
-        company_data = crawl_and_generate_profile(company_data)
-
-        # Extract all available information
-        company_name = company_data.get('company_name', '')
-        company_profile = company_data.get('company_description', '')
-        founder_name = company_data.get('founder_name', 'the founder')
-        company_website = company_data.get('website')
-
-        # Generate cold email with all available information
-        cold_email = get_cold_email_to_business(
-            company_profile=company_profile,
-            founder_name=founder_name,
-            business_name=company_name,
-            company_website=company_website,
-        )
-
-        if cold_email:
-            return {
-                'company_name': company_name,
-                'cold_email': cold_email,
-                'status': 'success'
-            }
-        else:
-            return {
-                'company_name': company_name,
-                'error_message': 'Failed to generate cold email',
-                'status': 'error'
-            }
-    except Exception as e:
-        logger.error(f"Error in generate_company_profile: {str(e)}")
-        return {
-            'company_name': company_data.get('company_name', ''),
-            'error_message': str(e),
-            'status': 'error'
-        }
 
 def generate_multiple_profiles(companies_data: List[dict]) -> List[dict]:
     """Generate cold emails for multiple companies"""
