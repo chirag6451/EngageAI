@@ -15,3 +15,23 @@ MY_COMPANY_PROFILE = """
 - 18 Years old company with team of 50+ developers
 -Generative AI, Machine learning, Deep learning, Neural networks, Reinforcement learning, Mobile app development
 """  # Replace with your actual company profile
+
+import os
+
+# OpenAI Configuration
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+
+# Email Configuration
+SMTP_SERVER = "email-smtp.ap-south-1.amazonaws.com"
+SMTP_PORT = 587
+SMTP_USER = "AKIA2LDJTSEUO7GR3XK2"
+SMTP_PASSWORD = "BEHQRNcFLgNoIjWFxBGMXzYFESjCsAIKRQeggf07CC1B"
+FROM_EMAIL = "info@indapoint.com"
+TO_EMAILS = ["chirag@indapoint.com"]
+
+# Database Configuration
+DATABASE_NAME = "csv_manager.db"
+
+# Crawling Configuration
+MAX_RETRIES = 3
+TIMEOUT = 30

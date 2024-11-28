@@ -4,6 +4,10 @@ import mimetypes
 import smtplib
 import ssl
 from email.message import EmailMessage
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
 from typing import List
 import markdown
 
@@ -72,4 +76,52 @@ def send_email(subject: str, body: str, to_email: List[str], attachments: List[s
             return True
     except Exception as e:
         logging.error(f"Failed to send email: {e}")
+        return False
+
+def send_email_with_attachment(recipient_email: str, subject: str, body: str, attachment_path: str) -> bool:
+    """
+    Send an email with an attachment using SMTP
+    """
+    from config import SMTP_SERVER, SMTP_PORT, SMTP_USER, SMTP_PASSWORD
+    logger = logging.getLogger()
+    
+    try:
+        # Create message container
+        msg = MIMEMultipart()
+        msg['From'] = SMTP_USER
+        msg['To'] = recipient_email
+        msg['Subject'] = subject
+
+        # Add body
+        msg.attach(MIMEText(body, 'plain'))
+
+        # Add attachment
+        with open(attachment_path, 'rb') as attachment:
+            part = MIMEBase('application', 'octet-stream')
+            part.set_payload(attachment.read())
+            
+        # Encode the attachment
+        encoders.encode_base64(part)
+        
+        # Add header for attachment
+        filename = os.path.basename(attachment_path)
+        part.add_header(
+            'Content-Disposition',
+            f'attachment; filename= {filename}'
+        )
+
+        # Add attachment to message
+        msg.attach(part)
+
+        # Create SMTP session
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls()
+            server.login(SMTP_USER, SMTP_PASSWORD)
+            server.send_message(msg)
+
+        logger.info(f"Email with attachment sent successfully to {recipient_email}")
+        return True
+
+    except Exception as e:
+        logger.error(f"Error sending email with attachment: {str(e)}")
         return False

@@ -8,6 +8,10 @@ from crawl_with_ai import fetch_from_url
 from cold_email_generator import get_cold_email_to_business
 from email_utility import send_email, format_email_content
 from config import TO_EMAILS
+from batch_email_processor import BatchEmailProcessor
+from word_generator import WordGenerator
+from html_generator import HTMLGenerator
+from markdown_generator import MarkdownGenerator
 
 # Configure logging
 logging.basicConfig(
@@ -354,6 +358,31 @@ class MarketingAutomation:
         except Exception as e:
             logger.error(f"Error in test process: {str(e)}")
 
+    def generate_all_emails_doc(self):
+        """Generate Markdown document with all emails from database"""
+        try:
+            # Get all profiles from database
+            profiles = self.db.get_all_company_profiles()
+            
+            if not profiles:
+                print("No emails found in the database.")
+                return
+            
+            # Generate Markdown
+            md_gen = MarkdownGenerator()
+            output_path = 'generated_emails.md'
+            
+            if md_gen.generate_markdown(profiles, output_path):
+                print(f"\nSuccessfully generated Markdown document at: {output_path}")
+                print(f"Total emails included: {len(profiles)}")
+                print("\nYou can open this file in any Markdown viewer or editor to view the formatted emails.")
+            else:
+                print("Failed to generate Markdown document.")
+                
+        except Exception as e:
+            logging.error(f"Error generating markdown document: {str(e)}")
+            print("An error occurred while generating the document.")
+
 def main():
     """
     Main function to run the marketing automation process
@@ -361,6 +390,7 @@ def main():
     try:
         # Initialize the automation class
         automation = MarketingAutomation()
+        batch_processor = BatchEmailProcessor()
         
         while True:
             print("\nCold Email Marketing Automation")
@@ -368,9 +398,10 @@ def main():
             print("2. Send existing cold emails")
             print("3. Empty all tables")
             print("4. Test with single record")
-            print("5. Exit")
+            print("5. Generate Markdown document with all emails")
+            print("6. Exit")
             
-            choice = input("\nEnter your choice (1-5): ").strip()
+            choice = input("\nEnter your choice (1-6): ").strip()
             
             if choice == "1":
                 # Get file path from user
@@ -399,7 +430,7 @@ def main():
                     if send_emails in ['yes', 'no']:
                         break
                     print("Please enter 'yes' or 'no'")
-
+            
                 if send_emails == 'yes':
                     logger.info("Step 4: Sending cold emails...")
                     automation.send_cold_emails(file_id)
@@ -445,11 +476,14 @@ def main():
                 automation.test_single_record(file_path)
                 
             elif choice == "5":
-                print("Exiting program...")
+                automation.generate_all_emails_doc()
+                
+            elif choice == "6":
+                print("Exiting...")
                 break
             
             else:
-                print("Invalid choice. Please enter 1-5.")
+                print("Invalid choice. Please enter 1-6.")
 
     except Exception as e:
         logger.error(f"Error in main process: {str(e)}")

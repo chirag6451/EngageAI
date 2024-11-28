@@ -16,9 +16,6 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        # Drop existing company_profiles table if it exists
-        cursor.execute("DROP TABLE IF EXISTS company_profiles")
-        
         # Create files table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS files (
@@ -49,27 +46,23 @@ class Database:
             crunchbase_url TEXT UNIQUE NOT NULL,
             html_content TEXT,
             crawl_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            source_file_id INTEGER,
-            status TEXT DEFAULT 'success',
-            error_message TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            status TEXT,
+            error TEXT
         )
         ''')
 
-        # Create company_profiles table for cold emails
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS company_profiles (
-                profile_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                company_name TEXT NOT NULL,
-                profile_text TEXT,
-                generation_date TEXT,
-                source_file_id INTEGER,
-                status TEXT,
-                error_message TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (source_file_id) REFERENCES files (file_id)
-            )
-        """)
+        # Create company_profiles table
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS company_profiles (
+            profile_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_name TEXT,
+            profile_text TEXT,
+            source_file_id INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            status TEXT,
+            FOREIGN KEY (source_file_id) REFERENCES files (file_id)
+        )
+        ''')
         
         conn.commit()
         conn.close()
@@ -181,8 +174,8 @@ class Database:
         try:
             cursor.execute('''
                 INSERT OR REPLACE INTO crawled_data 
-                (company_name, crunchbase_url, html_content, source_file_id, status, error_message, crawl_date)
-                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                (company_name, crunchbase_url, html_content, source_file_id, status, error)
+                VALUES (?, ?, ?, ?, ?, ?)
             ''', (company_name, url, html_content, source_file_id, status, error_message))
             
             conn.commit()
@@ -201,19 +194,19 @@ class Database:
         try:
             if url:
                 cursor.execute('''
-                    SELECT crawl_id, company_name, crunchbase_url, html_content, crawl_date, status, error_message
+                    SELECT crawl_id, company_name, crunchbase_url, html_content, crawl_date, status, error
                     FROM crawled_data
                     WHERE crunchbase_url = ?
                 ''', (url,))
             elif source_file_id:
                 cursor.execute('''
-                    SELECT crawl_id, company_name, crunchbase_url, html_content, crawl_date, status, error_message
+                    SELECT crawl_id, company_name, crunchbase_url, html_content, crawl_date, status, error
                     FROM crawled_data
                     WHERE source_file_id = ?
                 ''', (source_file_id,))
             else:
                 cursor.execute('''
-                    SELECT crawl_id, company_name, crunchbase_url, html_content, crawl_date, status, error_message
+                    SELECT crawl_id, company_name, crunchbase_url, html_content, crawl_date, status, error
                     FROM crawled_data
                 ''')
             
@@ -281,15 +274,14 @@ class Database:
             
             cursor.execute("""
                 INSERT INTO company_profiles 
-                (company_name, profile_text, generation_date, source_file_id, status, error_message)
-                VALUES (?, ?, ?, ?, ?, ?)
+                (company_name, profile_text, source_file_id, created_at, status)
+                VALUES (?, ?, ?, ?, ?)
             """, (
                 data['company_name'],
                 data['profile_text'],
-                datetime.now().isoformat(),
                 data['source_file_id'],
-                data['status'],
-                data.get('error_message')
+                datetime.now().isoformat(),
+                data['status']
             ))
             
             conn.commit()
@@ -300,32 +292,57 @@ class Database:
         finally:
             conn.close()
 
-    def get_company_profiles(self, file_id=None):
-        """Get generated cold emails from database"""
+    def get_company_profiles(self, file_id: int):
+        """Get all company profiles for a file"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
         try:
-            conn = self.get_connection()
-            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT company_name, profile_text
+                FROM company_profiles
+                WHERE source_file_id = ?
+            """, (file_id,))
+            rows = cursor.fetchall()
+            if not rows:
+                logging.warning(f"No company profiles found for file_id: {file_id}")
+                return []
+                
+            profiles = []
+            for row in rows:
+                profiles.append({
+                    'company_name': row[0],
+                    'profile_text': row[1]
+                })
             
-            if file_id:
-                cursor.execute("""
-                    SELECT profile_id, company_name, profile_text, generation_date, status, error_message
-                    FROM company_profiles
-                    WHERE source_file_id = ?
-                    ORDER BY generation_date DESC
-                """, (file_id,))
-            else:
-                cursor.execute("""
-                    SELECT profile_id, company_name, profile_text, generation_date, status, error_message
-                    FROM company_profiles
-                    ORDER BY generation_date DESC
-                """)
+            logging.info(f"Found {len(profiles)} company profiles for file_id: {file_id}")
+            return profiles
             
-            return cursor.fetchall()
         except Exception as e:
             logging.error(f"Error getting company profiles: {str(e)}")
             return []
         finally:
             conn.close()
+
+    def get_all_company_profiles(self):
+        """Get all company profiles from the database"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT company_name, profile_text
+                FROM company_profiles
+                WHERE status = 'success'
+            """)
+            
+            profiles = cursor.fetchall()
+            conn.close()
+            
+            return profiles
+            
+        except Exception as e:
+            logging.error(f"Error getting all company profiles: {str(e)}")
+            return []
 
     def get_file_by_id(self, file_id: int) -> dict:
         """Get file data by ID"""
@@ -366,17 +383,29 @@ class Database:
         """)
         return cursor.fetchall()
 
-    def get_company_profiles(self, file_id: int):
-        """Get all company profiles for a file"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT company_name, profile_text
-            FROM company_profiles
-            WHERE source_file_id = ?
-        """, (file_id,))
-        rows = cursor.fetchall()
-        return [{'company_name': row[0], 'profile_text': row[1]} for row in rows]
+    def get_file_details(self, file_id: int) -> tuple:
+        """Get file details by ID"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT file_id, filename, file_type, created_at, row_count
+                FROM files
+                WHERE file_id = ?
+            """, (file_id,))
+            
+            row = cursor.fetchone()
+            if not row:
+                logging.warning(f"No file found with ID: {file_id}")
+                return None
+                
+            return row
+            
+        except Exception as e:
+            logging.error(f"Error getting file details: {str(e)}")
+            return None
+        finally:
+            conn.close()
 
     def empty_tables(self):
         """Empty all tables in the database"""
