@@ -5,10 +5,7 @@ from bs4 import BeautifulSoup
 from typing import Dict, Optional, List
 from pydantic import BaseModel
 import openai
-from config import (
-    MY_NAME, MY_DESIGNATION, MY_COMPANY_NAME, MY_COMPANY_PROFILE,
-    MY_LINKEDIN, MY_PHONE, MY_EMAIL, OPENAI_API_KEY
-)
+from config import OPENAI_API_KEY
 from crawl_with_ai import fetch_from_url
 from ai_profile_generator import AIProfileGenerator
 from get_weather import get_weather_forecast
@@ -96,16 +93,24 @@ def truncate_text(text: str, max_length: int = 300) -> str:
     
     return truncated.strip() + '...'
 
-def get_cold_email_prompt(company_profile: str, business_name: str, company_website: str, location: str = None) -> str:
+def get_cold_email_prompt(
+    company_profile: str,
+    business_name: str,
+    company_website: str,
+    location: str = None,
+    config: dict = None
+) -> str:
     """Generate a prompt for the cold email."""
     weather_context = ""
+    
+    if not config:
+        raise ValueError("Config is required for email generation")
     
     if location:
         try:
             logger.info(f"Getting weather data for location: {location}")
             weather_data = get_weather_forecast(location)
             if weather_data:
-                # Format weather context to be more natural
                 weather_context = f"""
 Weather Information:
 Location: {location}
@@ -126,13 +131,11 @@ Company Information:
 {company_profile}
 
 My Information:
-- Name: {MY_NAME}
-- Role: {MY_DESIGNATION}
-- Company: {MY_COMPANY_NAME}
-- Experience: {MY_COMPANY_PROFILE}
-- Team Size: 
-- Expertise: 
-- Contact: {MY_LINKEDIN} | {MY_PHONE} | {MY_EMAIL}
+- Name: {config['MY_NAME']}
+- Role: {config['MY_DESIGNATION']}
+- Company: {config['MY_COMPANY_NAME']}
+- Experience: {config['MY_COMPANY_PROFILE']}
+- Contact: {config['MY_LINKEDIN']} | {config['MY_PHONE']} | {config['MY_EMAIL']}
 
 Guidelines:
 1. Start with a personalized opening that mentions their location's weather if available
@@ -150,6 +153,7 @@ def get_cold_email_to_business(
     business_name: str,
     company_website: str,
     company_data: dict = None,
+    config: dict = None
 ) -> str:
     """Generate a cold email for a business."""
     try:
@@ -191,19 +195,20 @@ def get_cold_email_to_business(
         logger.info("\n=== Final Prompt Weather Context ===")
         logger.info(weather_context if weather_context else "No weather context available")
         
-        # Generate the prompt with weather context if available
+        # Generate the prompt with weather context if available and config
         prompt = get_cold_email_prompt(
             company_profile=company_profile,
             business_name=business_name,
             company_website=company_website,
-            location=location
+            location=location,
+            config=config
         )
         
         logger.info(f"Prompt generated with weather context? {bool(weather_context)}")
         
         # Generate the email using OpenAI
         response = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-3.5-turbo",  # Using GPT-3.5 to avoid rate limits
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": prompt}

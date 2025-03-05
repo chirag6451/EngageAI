@@ -18,28 +18,55 @@ var/
 *.egg-info/
 .installed.cfg
 *.egg
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
 
 # Virtual Environment
 venv/
+.venv/
+ENV/
 .env
+.env.*
+!.env.template
+!.env.example
 
 # IDE
 .idea/
 .vscode/
 *.swp
 *.swo
+*.swn
+.DS_Store
+Thumbs.db
 
-# Generated files
+# Project specific
 *.db
+config.py
+!config.template.py
 generated_emails.*
 all_generated_emails.*
 ~$*
 scraped_data/
 data/
 generated_docs/
+temp/
+cache/
 
 # Logs
 *.log
+logs/
+log/
 
-# OS specific
-.DS_Store
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# CSV files (optional, uncomment if you don't want to track sample data)
+# *.csv
+# !sample_data.csv

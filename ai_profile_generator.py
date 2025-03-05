@@ -23,7 +23,7 @@ class AIProfileGenerator:
         prompt = self._create_prompt(company_data)
         
         try:
-            response = openai.ChatCompletion.create(
+            response = openai.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": "You are a professional business analyst. Create a detailed company profile based on the provided information."},

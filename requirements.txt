@@ -16,3 +16,5 @@ python-dotenv>=1.0.0
 python-docx==0.8.11
 Jinja2==3.1.2
 html2docx==1.6.0
+streamlit
+playwright
