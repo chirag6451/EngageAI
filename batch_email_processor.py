@@ -37,7 +37,7 @@ class BatchEmailProcessor:
             file_details = self.db.get_file_details(file_id)
             if not file_details:
                 logger.warning(f"No file details found for ID: {file_id}, using default name")
-                filename = f"batch_{file_id}"
+                filename = f"engageai_batch_{file_id}"
             else:
                 filename = os.path.splitext(file_details[1])[0]
             

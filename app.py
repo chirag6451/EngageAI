@@ -7,7 +7,7 @@ from datetime import datetime
 from crawl_with_ai import fetch_from_url
 from cold_email_generator import get_cold_email_to_business, extract_company_info
 from ai_profile_generator import AIProfileGenerator
-from config import (
+from temp_config import (
     MY_NAME, MY_DESIGNATION, MY_COMPANY_NAME, MY_LINKEDIN, 
     MY_PHONE, MY_EMAIL, MY_COMPANY_PROFILE, OPENAI_API_KEY
 )
@@ -111,7 +111,7 @@ def save_emails_to_file(emails: list) -> str:
     return filename
 
 def main():
-    st.title("Marketing Email Generator")
+    st.title("EngageAI - AI-Powered Cold Email Personalization")
     st.write("Upload a CSV file with company information to generate personalized cold emails.")
 
     # Configuration Section

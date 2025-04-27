@@ -1,22 +1,28 @@
-# AI-Powered Cold Email Personalization Tool | Smart Outreach & Engagement
+# EngageAI | AI-Powered Cold Email Personalization Tool
 
 This application enables users to send highly personalized cold emails to potential clients using AI. It streamlines the email drafting process by generating customized content based on real-time data, ensuring better engagement and higher response rates.
 
 ## Key Features
 
-- **Custom Email Generation**: The app drafts personalized emails using AI, tailoring content based on the recipient's details.
+- **Custom Email Generation**: The app drafts personalized emails using AI, tailoring content based on the recipient's details and website analysis.
 
 - **CSV Upload & Website Analysis**: Users can upload a CSV file with target data and provide a website URL. The app retrieves website content in real time to craft relevant emails.
 
-- **Location-Based Personalization**: If the recipient's location is available, the app adds real-time weather information to make the email more engaging.
+- **Location-Based Weather Personalization**: The system detects the recipient's location from the provided data, retrieves the next day's weather forecast, and incorporates natural-sounding weather references in the email to create a personalized opening that feels authentic and engaging.
 
 - **Business & Contact Customization**: Users can input their business details and contact information, which are considered while drafting emails.
 
 - **Single & Bulk Email Generation**: Users can generate a single test email or create emails for all contacts in the list.
 
-- **Download & Edit**: The generated emails can be downloaded as a text file for further customization and editing.
+- **Company Profile Generation**: The system automatically creates detailed company profiles using AI analysis of the target company's website, extracting key information like services, target market, and business model.
 
-This solution helps businesses enhance their outreach efforts by making cold emails more relevant, engaging, and impactful.
+- **Document Generation**: Generated emails can be downloaded as text files or compiled into Word documents for further customization and editing.
+
+- **Email Sending Capability**: Directly send personalized emails with attachments from within the application.
+
+- **Batch Processing**: Process multiple companies in a single batch with progress tracking and results summary.
+
+This solution helps businesses enhance their outreach efforts by making cold emails more relevant, engaging, and impactful. The weather-based personalization creates a natural conversation starter that shows attention to detail and creates an immediate connection with the recipient.
 
 ## Technical Stack
 
@@ -25,6 +31,8 @@ This solution helps businesses enhance their outreach efforts by making cold ema
 - **Web Scraping**: Playwright for real-time website analysis
 - **Data Processing**: BeautifulSoup4 for HTML parsing
 - **Weather Data**: Integration with weather API for location-based personalization
+- **Document Generation**: Word document creation for email exports
+- **Database**: Local database for storing profiles and results
 
 ## Prerequisites
 
@@ -97,7 +105,7 @@ OPENAI_API_KEY=your_openai_api_key_here
    Acme Corp,www.acme.com,New York
    Tech Solutions,www.techsolutions.com,San Francisco
    ```
-   The Location column is optional but enables weather-based personalization.
+   The Location column enables weather-based personalization for more engaging emails.
 
 3. **Generate Emails**
    - Upload your CSV file
@@ -105,6 +113,16 @@ OPENAI_API_KEY=your_openai_api_key_here
    - Click "Generate Emails" to start
    - Preview generated emails in the UI
    - Download as text file for further editing
+
+## Application Screenshots
+
+Below are screenshots of the AI-Powered Cold Email Personalization Tool in action:
+
+### Main Interface
+![Main Application Interface](ss1.png)
+
+### Email Generation Results
+![Email Generation Results](ss2.png)
 
 ## CSV Format
 
@@ -115,18 +133,34 @@ Acme Corp,www.acme.com,New York
 Tech Solutions,www.techsolutions.com,San Francisco
 ```
 
+The Location field is used to:
+1. Retrieve local weather information
+2. Create personalized opening lines referencing the weather
+3. Make the email feel more authentic and tailored to the recipient
+
+## Weather Personalization Examples
+
+The system creates natural-sounding weather references like:
+
+- "I hope you're enjoying the sunny weather in San Francisco today."
+- "With the forecasted rain in New York tomorrow, it might be a good day to discuss how our solutions can help your business shine despite any conditions."
+- "As Chicago prepares for snow this week, I wanted to reach out about warming up your marketing strategy."
+
 ## Development
 
 ### Project Structure
 ```
 marketing-email-generator/
 ├── app.py                 # Main Streamlit application
-├── config.py             # Configuration settings
+├── config.py              # Configuration settings
 ├── cold_email_generator.py # Email generation logic
 ├── ai_profile_generator.py # AI profile generation
-├── requirements.txt      # Python dependencies
-├── .env                 # Environment variables
-└── README.md            # Documentation
+├── get_weather.py         # Weather data retrieval
+├── batch_email_processor.py # Batch processing functionality
+├── word_generator.py      # Word document generation
+├── requirements.txt       # Python dependencies
+├── .env                   # Environment variables
+└── README.md              # Documentation
 ```
 
 ### Contributing

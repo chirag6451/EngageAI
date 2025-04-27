@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 from typing import Dict, Optional, List
 from pydantic import BaseModel
 import openai
-from config import OPENAI_API_KEY
+from temp_config import OPENAI_API_KEY
 from crawl_with_ai import fetch_from_url
 from ai_profile_generator import AIProfileGenerator
 from get_weather import get_weather_forecast

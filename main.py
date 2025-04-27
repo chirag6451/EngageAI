@@ -479,16 +479,18 @@ class MarketingAutomation:
 
 def main():
     """
-    Main function to run the marketing automation process
+    Main function to run the EngageAI automation process
     """
     try:
-        # Initialize the automation class
         automation = MarketingAutomation()
-        batch_processor = BatchEmailProcessor()
+        
+        print("\n" + "="*50)
+        print("Welcome to EngageAI - AI-Powered Cold Email Personalization")
+        print("="*50)
         
         while True:
-            print("\nCold Email Marketing Automation")
-            print("1. Process new CSV file and generate emails")
+            print("\nWhat would you like to do?")
+            print("1. Process new CSV file and generate cold emails")
             print("2. Send existing cold emails")
             print("3. Empty all tables")
             print("4. Test with single record")

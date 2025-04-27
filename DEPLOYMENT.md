@@ -1,4 +1,4 @@
-# Marketing Email Generator - Deployment Guide
+# EngageAI - Deployment Guide
 
 ## Prerequisites
 
@@ -18,7 +18,7 @@
 1. **Clone the Repository**
    ```bash
    git clone <repository-url>
-   cd marketing
+   cd engageai
    ```
 
 2. **Create Virtual Environment**
@@ -70,10 +70,10 @@
 
    [Service]
    User=your_user
-   WorkingDirectory=/path/to/marketing
-   Environment="PATH=/path/to/marketing/venv/bin"
+   WorkingDirectory=/path/to/engageai
+   Environment="PATH=/path/to/engageai/venv/bin"
    Environment="OPENAI_API_KEY=your_openai_api_key"
-   ExecStart=/path/to/marketing/venv/bin/streamlit run app.py --server.port 8501 --server.address 0.0.0.0
+   ExecStart=/path/to/engageai/venv/bin/streamlit run app.py --server.port 8501 --server.address 0.0.0.0
 
    [Install]
    WantedBy=multi-user.target
@@ -148,7 +148,7 @@
    - **Permission Issues**
      ```bash
      # Fix directory permissions
-     sudo chown -R your_user:your_user /path/to/marketing
+     sudo chown -R your_user:your_user /path/to/engageai
      chmod 600 .env
      ```
 
