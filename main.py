@@ -1,3 +1,17 @@
+"""
+EngageAI - AI-Powered Cold Email Personalization Tool
+
+This module provides the main functionality for the EngageAI application,
+allowing users to process CSV files, crawl company websites, generate cold emails,
+and send them to potential clients.
+
+Author: Chirag Kansara/Ahmedabadi
+        Founder and CTO
+        IndaPoint Technologies Private Limited
+        https://www.linkedin.com/in/indapoint/
+        https://www.indapoint.com/
+"""
+
 import os
 import csv
 import json

@@ -1,3 +1,17 @@
+"""
+EngageAI - AI-Powered Cold Email Personalization Tool
+
+This module handles the generation of personalized cold emails based on company data.
+It extracts relevant information from company websites, incorporates weather data,
+and uses AI to create highly engaging and personalized email content.
+
+Author: Chirag Kansara/Ahmedabadi
+        Founder and CTO
+        IndaPoint Technologies Private Limited
+        https://www.linkedin.com/in/indapoint/
+        https://www.indapoint.com/
+"""
+
 import os
 import json
 import logging

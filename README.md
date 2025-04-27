@@ -185,6 +185,14 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed deployment instructions.
 
 MIT License
 
+## Author
+
+**Chirag Kansara/Ahmedabadi**  
+Founder and CTO  
+IndaPoint Technologies Private Limited  
+[LinkedIn](https://www.linkedin.com/in/indapoint/)  
+[Company Website](https://www.indapoint.com/)
+
 ## Support
 
 For issues and feature requests, please create an issue in the repository.
