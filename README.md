@@ -177,9 +177,25 @@ marketing-email-generator/
 - Use environment variables for sensitive data
 - Regularly update dependencies
 
-## Deployment
+## 📚 Documentation
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed deployment instructions.
+**Complete documentation is available in the [docs/](docs/) folder:**
+
+### 🚀 Quick Start
+- **[Quick Reference Guide](docs/QUICK_REFERENCE.md)** - Fast setup and common commands
+
+### 👨‍💻 For Developers
+- **[Developer Deployment Guide](docs/DEVELOPER_DEPLOYMENT_GUIDE.md)** - Complete technical deployment
+- **[Deployment Guide](docs/DEPLOYMENT.md)** - Basic deployment instructions
+
+### 🏢 For Business Users
+- **[Business Configuration Guide](docs/BUSINESS_CONFIGURATION_GUIDE.md)** - Business setup
+- **[Persona Configuration Guide](docs/PERSONA_CONFIGURATION_GUIDE.md)** - Persona optimization
+
+### 📧 Examples
+- **[Sample Generated Emails](docs/SAMPLE_GENERATED_EMAILS.md)** - Real email examples
+
+**👉 Start here: [Complete Documentation Index](docs/README.md)**
 
 ## License
 
